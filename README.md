@@ -27,6 +27,10 @@ The original layout remains available when you install this alongside Herdr’s 
   badge when they need you, a green dot when they're done. Collapsed to the rail it
   keeps the logo where the wordmark was, and swaps it for the expand button under
   the pointer.
+- **Background jobs beneath their sessions.** With `herdr-bg` 0.4.0 or later,
+  each running job appears under its owning Pi or Claude Code session. Rows show
+  command summaries, elapsed time and a spinner. The session's icon or fold arrow
+  collapses jobs and sub-agents together, and remembers your choice per terminal.
 - **Spaces with their own icon.** A space can wear any `.svg` or `.png` from
   `~/.config/herdr-app/custom-icons/`, picked from the row's hover button. The
   icon is kept with the space's workspace, so a closed and reopened space comes
@@ -68,6 +72,23 @@ the icons and the background silently go missing.
   and anything it can't resolve falls back to plain JetBrains Mono, which has no
   Nerd Font glyphs.
 - Roughly a 1080p window. The backdrop is 2560×1440 and cover-fits.
+
+## Background jobs
+
+Install `herdr-bg` 0.4.0 or later from
+[agent-stuff](https://github.com/fparzer/agent-stuff), then reload Pi or Claude's
+plugins after active jobs finish. Update both `agents.js` and `activity.js` in
+`~/.config/herdr-app/mods/herdr-van/`. Herdr reloads the mod when you save them.
+The layout file needs no changes, and this feature does not need `pi-herdr-agents`.
+
+Click a job to focus its session. A job owned by a child without a pane opens that
+child's terminal preview. Finished jobs disappear. Permission prompts keep their
+normal parent status even while job rows show ongoing work.
+
+The sidebar reads leased snapshots from terminal metadata, without polling job
+processes or reading their output. Stopped reporters expire from the display.
+Elapsed time starts when the reporter first observes a job and resets if it reloads.
+Without compatible metadata, the sidebar keeps its usual agent display.
 
 ## Keys
 
@@ -120,6 +141,19 @@ same mod, built from the shipped `spaces`, `agents`, `tabs`, `workspace-chrome`
 and `pane`. `mods/herdr-filechanges/` is the Pi-Changes panel that header opens,
 and `mods/herdr-tui-prefix/` the Ctrl+B prefix. `RECIPE.md` is the full build
 brief if you want to know exactly what changed and why.
+
+## Check changes
+
+From this repository root:
+
+```bash
+node --experimental-vm-modules --test tests/*.test.mjs
+herdr-app check mods/herdr-van
+```
+
+The tests cover job snapshots, session ownership, completion, folding and focus.
+Node's experimental VM modules let the interaction tests substitute the native
+renderer while loading the actual sidebar code.
 
 ## License
 

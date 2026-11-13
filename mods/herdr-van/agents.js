@@ -5,6 +5,7 @@ import { div, svg } from "gpui-kit";
 import { v_flex, h_flex, ScrollHandle } from "gpui-base";
 import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props } from "herdr";
 import { claimSidebarHover, narrow, icon, menuCard } from "./lib.js";
+import { agentChildren, backgroundJobs } from "./activity.js";
 
 const clean = (s) => (s ?? "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
 
@@ -54,13 +55,14 @@ export default class Agents {
       return;
     }
     this.folded = new Set();
+    this.foldedAgents = new Set(JSON.parse(localStorage.getItem("folded-agents") ?? "[]"));
     this.scroll = ScrollHandle.new();
     this.scrolled = null; // the row last revealed
     // Each agent's last state and when it changed (ms), kept across restarts.
     this.changed = JSON.parse(localStorage.getItem("changed") ?? "{}");
     // Pins used to live here; `adoptPins` hands them to the terminals that still exist.
     this.pendingPins = JSON.parse(localStorage.getItem("pins") ?? "[]");
-    cx.timer.every(30000, (cx) => cx.notify());
+    cx.timer.every(10000, (cx) => cx.notify());
   }
 
   // Stamps agents whose state changed. Done and idle count as one: looking at a
@@ -150,17 +152,31 @@ export default class Agents {
     });
   }
 
-  // Live sub-agents of `addr`, depth first, each with the tree lines in front of it.
-  // `kidsOf` is built once per render (see `render`): parent address -> live children.
-  tree(kidsOf, addr, lead = []) {
-    const kids = kidsOf.get(addr) ?? [];
-    return kids.flatMap((k, i) => {
-      const last = i === kids.length - 1;
-      return [
-        { t: k, lines: [...lead, last ? "└" : "├"] },
-        ...this.tree(kidsOf, k.address, [...lead, last ? "" : "│"]),
-      ];
-    });
+  toggleAgent(address, cx) {
+    this.foldedAgents.has(address) ? this.foldedAgents.delete(address) : this.foldedAgents.add(address);
+    localStorage.setItem("folded-agents", JSON.stringify([...this.foldedAgents]));
+    cx.notify();
+  }
+
+  jobRow(t, entry, now) {
+    const { job, owner, lines } = entry;
+    const session = this.owners.get(owner);
+    return h_flex()
+      .id(`job-${owner}-${job.id}`)
+      .pl(15).pr(8).h(26).rounded(8).flex_none().gap(0).items_center().text_size(12.5)
+      .cursor_pointer()
+      .hover(s => s.bg(t.hover))
+      .tooltip(`Background job ${job.id}: ${job.command || job.id}`)
+      .on_click(() => session
+        ? run("pane.focus", { pane: session.pane })
+        : run("terminal.peek", { terminal: owner }))
+      .children(lines.map(l => div().self_start().mt(-4).w(9).h(17).mr(4).flex_none()
+        .when(Boolean(l), el => el.border_l(1.5).border_color(t.input))
+        .when(l === "└" || l === "├", el => el.border_b(1.5).rounded_bl(6))))
+      .child(svg("mods/herdr-van/icons/terminal.svg").size(14).mr(8).flex_none().text_color(t.muted))
+      .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(job.command || job.id))
+      .child(div().ml(6).mr(8).text_size(11).flex_none().text_color(t.dim).child(duration(Math.max(0, now - job.startedAt))))
+      .child(this.status(t, { status: "working" }));
   }
 
   subRow(t, s, shown, compact) {
@@ -209,6 +225,7 @@ export default class Agents {
     const sort = sortOf();
     let list = agents();
     this.listed = new Map(list.map((a) => [a.address, a.status]));
+    this.owners = new Map(list.map(a => [a.address, a]));
     const all = terminals();
     const ps = panes();
     const shown = focused()?.agent;
@@ -233,7 +250,9 @@ export default class Agents {
       else panesByTab.set(p.tab, [p]);
     }
     const tabs = spaces().flatMap((s) => s.tabs);
-    const urgency = new Map(list.map((a) => [a.address, Math.max(this.rank(a), ...this.tree(kidsOf, a.address).map((s) => RANK[kidStatus(s.t, this.listed)] ?? 0))]));
+    const jobsOf = new Map(all.map(k => [k.address, backgroundJobs(k, now)]));
+    const childrenOf = new Map(list.map(a => [a.address, agentChildren(kidsOf, jobsOf, a.address)]));
+    const urgency = new Map(list.map((a) => [a.address, Math.max(this.rank(a), ...childrenOf.get(a.address).filter(s => s.t).map((s) => RANK[kidStatus(s.t, this.listed)] ?? 0))]));
     const rankOf = (a) => urgency.get(a.address);
     if (byPriority) list = [...list].sort((x, y) => rankOf(y) - rankOf(x) || this.since(y) - this.since(x) || y.seq - x.seq);
     this.adoptPins(all);
@@ -244,9 +263,11 @@ export default class Agents {
 
     // The fold chevron; folded, the count too, colored by the most urgent one.
     const fold = (a, subs) => {
-      const sts = subs.map((s) => kidStatus(s.t, this.listed));
+      const sts = subs.map((s) => s.job ? "working" : kidStatus(s.t, this.listed));
       const top = sts.reduce((m, s) => ((RANK[s] ?? 0) > (RANK[m] ?? 0) ? s : m), null);
-      const open = !this.folded.has(a.address);
+      const open = !this.foldedAgents.has(a.address);
+      const jobCount = subs.filter(s => s.job).length;
+      const count = jobCount === subs.length ? `${jobCount} ${jobCount === 1 ? "job" : "jobs"}` : String(subs.length);
       return div()
         .id(`fold-${a.address}`)
         .h(18)
@@ -259,13 +280,13 @@ export default class Agents {
         .text_color(open ? t.dim : (t[top] ?? t.dim))
         .cursor_pointer()
         .hover((s) => s.bg(t.hover).text_color(t.foreground))
+        .tooltip(`${open ? "Collapse" : "Expand"} background jobs and sub-agents`)
         .on_click((_e, cx) => {
           cx.stop_propagation();
-          open ? this.folded.add(a.address) : this.folded.delete(a.address);
-          cx.notify();
+          this.toggleAgent(a.address, cx);
         })
         .child(svg(`mods/herdr-van/icons/chevron-${open ? "down" : "right"}.svg`).size(11).flex_none())
-        .when(!open, (el) => el.child(String(subs.length)));
+        .when(!open, (el) => el.child(count));
     };
 
     // A row reads "space \u00b7 detail": the detail is a tab someone named or the
@@ -347,8 +368,7 @@ export default class Agents {
         .when(Boolean(pic), el => el.child(div().id(`agent-fold-${a.address}`)
           .when(subs.length > 0, el => el.on_click((_e, cx) => {
             cx.stop_propagation();
-            this.folded.has(a.address) ? this.folded.delete(a.address) : this.folded.add(a.address);
-            cx.notify();
+            this.toggleAgent(a.address, cx);
           })).child(pic)))
         .child(h_flex().flex_1().min_w(0).gap(5).items_center()
           .child(div().flex_none().max_w(full && more ? 120 : 200).truncate().text_color(idle ? t.muted : t.foreground).child(name))
@@ -400,13 +420,16 @@ export default class Agents {
     const rows = [];
     let at = -1; // the row the focused agent itself stands on — a sub-agent has one of its own
     const add = (a, i) => {
-      const subs = collapsed ? [] : this.tree(kidsOf, a.address);
+      const subs = collapsed ? [] : childrenOf.get(a.address);
       if (at < 0 && a.address === shown) at = rows.length;
       rows.push(row(a, i, subs));
-      if (this.folded.has(a.address)) return;
+      if (this.foldedAgents.has(a.address)) return;
       for (const s of subs) {
-        if (at < 0 && s.t.address === shown) at = rows.length;
-        rows.push(this.subRow(t, s, shown, byPriority));
+        if (s.job) rows.push(this.jobRow(t, s, now));
+        else {
+          if (at < 0 && s.t.address === shown) at = rows.length;
+          rows.push(this.subRow(t, s, shown, byPriority));
+        }
       }
     };
     if (collapsed) list.forEach(add);
