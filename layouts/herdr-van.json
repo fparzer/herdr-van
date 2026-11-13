@@ -75,7 +75,7 @@
       "size": {
         "px": 268
       },
-      "background": "#16161e00",
+      "background": "#1f233500",
       "resizable": false
     },
     {
@@ -117,7 +117,7 @@
                     "height": 30,
                     "position": "top"
                   },
-                  "background": "#1a1b2600",
+                  "background": "#24283b00",
                   "border": {
                     "width": 1,
                     "color": "border"
@@ -131,18 +131,6 @@
                   "lone": true
                 }
               }
-            },
-            {
-              "id": "quota-panel",
-              "type": "block",
-              "content": {
-                "mod": "quota"
-              },
-              "size": {
-                "px": 320
-              },
-              "min": 240,
-              "max": 560
             }
           ],
           "padding": 0
@@ -152,10 +140,10 @@
     }
   ],
   "background": {
-    "image": "backgrounds/tokyo-grid.png",
+    "image": "backgrounds/tokyo-storm-grid.png",
     "fit": "cover"
   },
-  "theme": "tokyo-night",
+  "theme": "tokyo-night-storm",
   "font": "JetBrainsMono Nerd Font Mono",
   "font_size": 13,
   "ui_font": "JetBrainsMono Nerd Font Mono",

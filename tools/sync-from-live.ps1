@@ -44,7 +44,7 @@ foreach ($m in @('herdr-van', 'herdr-tui-prefix', 'herdr-filechanges')) {
 
 # Layout, theme, backdrop, icon, program overrides.
 # herdr-van-config.json is deliberately NOT synced: it is personal.
-foreach ($f in @('layouts\herdr-van.json', 'themes\tokyo-night.json', 'backgrounds\tokyo-grid.png', 'custom-icons\pi.svg', 'programs.json')) {
+foreach ($f in @('layouts\herdr-van.json', 'themes\tokyo-night-storm.json', 'backgrounds\tokyo-storm-grid.png', 'custom-icons\pi.svg', 'programs.json')) {
   $src = Join-Path $HerdrHome $f
   if (Test-Path $src) { Copy-Real $src (Join-Path $repo $f) }
 }
